@@ -77,6 +77,16 @@
         const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
         const initialToken = window.__initial_auth_token;
 
+        // --- 初期データ（リセット時にも使用） ---
+        const DEFAULT_TITLE = "浄水場新聞";
+        const DEFAULT_INFO = { school: "〇〇小学校", class: "〇年〇組", name: "名前〇〇" };
+        const DEFAULT_ARTICLES = [
+            { headline: "【見出し】メイン記事", sub: "小見出し", content: "記事を入力してください。", image: null },
+            { content: "中段の記事を入力してください。", image: null },
+            { headline: "【見出し】下段の見出し", content: "下段の記事を入力してください。", image: null }
+        ];
+        const DEFAULT_REFLECTION = "まとめ・ふりかえり";
+
         const initFirebase = () => {
             if (!window.firebase || !firebaseConfig.apiKey) return null; // 設定がない場合はローカルスタンドアロン動作
             try {
@@ -97,11 +107,13 @@
                 "loader-2": <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
                 "check-circle": <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" />,
                 "alert-triangle": <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01" />,
+                trash: <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />,
                 camera: <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3zM12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
             };
             return ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`lucide lucide-${name} ${className}`}>{icons[name]}</svg> );
         };
 
+        // 警告モーダル（はみ出し警告）
         const WarningModal = ({ isOpen, onClose }) => {
             if (!isOpen) return null;
             return (
@@ -115,6 +127,30 @@
                         <button onClick={onClose} className="bg-gray-900 hover:bg-black text-white font-black py-4 px-10 rounded-2xl shadow-lg active:scale-95 transition-all w-full font-sans text-lg text-white">
                             わかった！
                         </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 追加：やり直し確認モーダル（リセット用） ---
+        const ResetConfirmModal = ({ isOpen, onConfirm, onClose }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center border-4 border-gray-400 text-black">
+                        <Icon name="trash" className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+                        <h3 className="text-2xl font-black font-sans mb-4">本当に ぜんぶ消す？</h3>
+                        <p className="text-gray-600 font-bold mb-8 font-sans leading-relaxed text-center text-black">
+                            書いた内容やのせた写真が、<br/>すべて消えてしまいます。いいですか？
+                        </p>
+                        <div className="flex gap-3">
+                            <button onClick={onClose} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3.5 rounded-2xl shadow active:scale-95 transition-all font-sans text-md">
+                                やめる
+                            </button>
+                            <button onClick={onConfirm} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all font-sans text-md text-white">
+                                消す！
+                            </button>
+                        </div>
                     </div>
                 </div>
             );
@@ -270,14 +306,15 @@
             const [saveStatus, setSaveStatus] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [modalOpen, setModalOpen] = useState(false);
+            const [resetModalOpen, setResetModalOpen] = useState(false); // リセット用のモーダル状態
             const [globalOverflow, setGlobalOverflow] = useState(false);
             const firebaseServices = useRef(null);
             const modalTimerRef = useRef(null);
 
-            const [newsTitle, setNewsTitle] = useState("浄水場新聞");
-            const [info, setInfo] = useState({ school: "〇〇小学校", class: "〇年〇組", name: "名前〇〇" });
-            const [articles, setArticles] = useState([{ headline: "【見出し】メイン記事", sub: "小見出し", content: "記事を入力してください。", image: null }, { content: "中段の記事を入力してください。", image: null }, { headline: "【見出し】下段の見出し", content: "下段の記事を入力してください。", image: null }]);
-            const [reflection, setReflection] = useState("まとめ・ふりかえり");
+            const [newsTitle, setNewsTitle] = useState(DEFAULT_TITLE);
+            const [info, setInfo] = useState(DEFAULT_INFO);
+            const [articles, setArticles] = useState(DEFAULT_ARTICLES);
+            const [reflection, setReflection] = useState(DEFAULT_REFLECTION);
             const containerRef = useRef(null);
             const titleTextRef = useRef(null);
             const [fontSize, setFontSize] = useState('5rem');
@@ -327,7 +364,7 @@
             const save = async () => {
                 if (globalOverflow) { setModalOpen(true); return; }
                 
-                // localStorageフォールバック（共有サーバー等で通信エラー時にも確実にセーブできるようにする）
+                // localStorageフォールバック
                 try {
                     localStorage.setItem('newspaper_local_data', JSON.stringify({ newsTitle, info, articles, reflection }));
                 } catch(e) {}
@@ -344,6 +381,46 @@
                     setSaveStatus('success');
                     setTimeout(() => setSaveStatus(null), 3000);
                 } catch (e) {} finally { setIsSaving(false); }
+            };
+
+            // --- 追加：やり直し（リセット）の実行ロジック ---
+            const handleReset = async () => {
+                setResetModalOpen(false);
+                setNewsTitle(DEFAULT_TITLE);
+                setInfo(DEFAULT_INFO);
+                setArticles(DEFAULT_ARTICLES);
+                setReflection(DEFAULT_REFLECTION);
+                setGlobalOverflow(false);
+
+                // ローカルとクラウド上のセーブデータも初期状態に強制上書きする
+                try {
+                    localStorage.setItem('newspaper_local_data', JSON.stringify({
+                        newsTitle: DEFAULT_TITLE,
+                        info: DEFAULT_INFO,
+                        articles: DEFAULT_ARTICLES,
+                        reflection: DEFAULT_REFLECTION
+                    }));
+                } catch(e) {}
+
+                if (user && firebaseServices.current) {
+                    setIsSaving(true);
+                    try {
+                        await window.firebase.setDoc(window.firebase.doc(firebaseServices.current.db, 'artifacts', appId, 'users', user.uid, 'settings', 'newspaper_data'), {
+                            newsTitle: DEFAULT_TITLE,
+                            info: DEFAULT_INFO,
+                            articles: DEFAULT_ARTICLES,
+                            reflection: DEFAULT_REFLECTION,
+                            updatedAt: new Date().toISOString()
+                        });
+                        setSaveStatus('success');
+                        setTimeout(() => setSaveStatus(null), 3000);
+                    } catch(e) {} finally {
+                        setIsSaving(false);
+                    }
+                } else {
+                    setSaveStatus('success');
+                    setTimeout(() => setSaveStatus(null), 3000);
+                }
             };
 
             // ローカル保存データがあればマウント時に読み込む
@@ -387,6 +464,13 @@
                 <div className="min-h-screen py-8 flex flex-col items-center selection:bg-yellow-200 text-black">
                     <WarningModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
                     
+                    {/* 追加：やり直し（リセット）用の確認モーダル */}
+                    <ResetConfirmModal 
+                        isOpen={resetModalOpen} 
+                        onConfirm={handleReset} 
+                        onClose={() => setResetModalOpen(false)} 
+                    />
+                    
                     <div className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 no-print z-[100] bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-gray-200 text-black">
                         <button onClick={save} disabled={isSaving} className={`flex items-center gap-2 font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg active:scale-95 font-sans text-sm ${globalOverflow ? 'bg-red-200 text-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
                             {isSaving ? <Icon name="loader-2" className="w-4 h-4 spinner" /> : <Icon name="save" className="w-4 h-4 text-white" />}
@@ -396,6 +480,13 @@
                             <Icon name="file-down" className="w-4 h-4 text-white" />
                             PDF（いんさつ）にする
                         </button>
+                        
+                        {/* 追加：最初からやりなおす（ぜんぶ消す）ボタン */}
+                        <button onClick={() => setResetModalOpen(true)} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl transition-all shadow active:scale-95 font-sans text-sm border border-gray-300">
+                            <Icon name="trash" className="w-4 h-4 text-red-500" />
+                            最初からやりなおす
+                        </button>
+
                         {saveStatus === 'success' && <div className="flex items-center gap-1.5 text-green-600 font-bold font-sans text-sm text-black"><Icon name="check-circle" className="w-4 h-4" /> ほぞんできたよ！</div>}
                     </div>
 
@@ -409,8 +500,8 @@
                                     </div>
                                     <div className="w-full h-[25%] bg-gray-200 mt-5 p-3 text-lg border-2 border-black flex flex-row-reverse justify-start items-start shrink-0 font-bold font-sans text-black text-center text-black">
                                         <div contentEditable suppressContentEditableWarning onBlur={e => setInfo({...info, school: e.target.textContent})} className="vertical-text h-full">{info.school}</div>
-                                        <div contentEditable suppressContentEditableWarning onBlur={e => setInfo({...info, class: e.target.textContent})} className="vertical-text h-full ml-1.5">{info.class}</div>
-                                        <div contentEditable suppressContentEditableWarning onBlur={e => setInfo({...info, name: e.target.textContent})} className="vertical-text h-full ml-2.5">{info.name}</div>
+                                        <div contentEditable suppressContentEditableWarning onBlur={(e) => setInfo({...info, class: e.target.textContent})} className="vertical-text h-full ml-1.5">{info.class}</div>
+                                        <div contentEditable suppressContentEditableWarning onBlur={(e) => setInfo({...info, name: e.target.textContent})} className="vertical-text h-full ml-2.5">{info.name}</div>
                                     </div>
                                 </div>
 
