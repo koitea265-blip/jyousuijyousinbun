@@ -4,12 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>浄水場新聞メーカー</title>
-    
     <!-- 
-      【オフライン（インターネット未接続環境）運用の注意】
-      学校の共有サーバー等がインターネットに繋がっていない場合、以下のCDNリンクは機能しません。
-      その場合は、それぞれのURL先からファイルをPCにダウンロードし、
-      以下のように同じフォルダからの相対パス（例: ./react.production.min.js）に書き換えてください。
+       【オフライン（インターネット未接続環境）運用の注意】
+       学校の共有サーバー等がインターネットに繋がっていない場合、以下のCDNリンクは機能しません。
+       その場合は、それぞれのURL先からファイルをPCにダウンロードし,
+       以下のように同じフォルダからの相対パス（例: ./react.production.min.js）に書き換えてください。
     -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" onerror="handleCdnError('React')"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" onerror="handleCdnError('React DOM')"></script>
@@ -40,7 +39,6 @@
             });
         }
     </script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;900&family=Noto+Sans+JP:wght@400;900&display=swap');
         body { background-color: #f3f4f6; color: black; font-family: 'Noto Serif JP', serif; overflow-x: hidden; }
@@ -81,11 +79,11 @@
         const DEFAULT_TITLE = "浄水場新聞";
         const DEFAULT_INFO = { school: "〇〇小学校", class: "〇年〇組", name: "名前〇〇" };
         const DEFAULT_ARTICLES = [
-            { headline: "【見出し】メイン記事", sub: "小見出し", content: "記事を入力してください。", image: null },
-            { content: "中段の記事を入力してください。", image: null },
-            { headline: "【見出し】下段の見出し", content: "下段の記事を入力してください。", image: null }
+            { headline: "【見出し】メイン記事", sub: "小見出し", content: "記事を入力してください。ここには浄水場を見学して、一番おどろいたことや、みんなに伝えたい大切なことをくわしく書きましょう。", image: null },
+            { content: "中段の記事を入力してください。浄水場で使われている大きな機械（ちんでん池やろ過池など）の名前や、水がきれいになる仕組みについて書いてみましょう。", image: null },
+            { headline: "【見出し】下段の見出し", content: "下段の記事を入力してください。家庭での水の節約や、これからの私たちのくらしに役立つアイデアをまとめましょう。", image: null }
         ];
-        const DEFAULT_REFLECTION = "まとめ・ふりかえり";
+        const DEFAULT_REFLECTION = "【まとめ・ふりかえり】\n浄水場を見学して、水の大切さや働く人の努力がよく分かりました。これからは一滴の水も大切に使っていきたいです。";
 
         const initFirebase = () => {
             if (!window.firebase || !firebaseConfig.apiKey) return null; // 設定がない場合はローカルスタンドアロン動作
@@ -113,6 +111,83 @@
             return ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`lucide lucide-${name} ${className}`}>{icons[name]}</svg> );
         };
 
+        // --- 日本語入力（IME）バグを完全に解消する非制御安全フィールドコンポーネント ---
+        const SafeEditableText = ({ value, onChange, placeholder, className = "", style = {}, isVertical = true, onOverflowStateChange = null }) => {
+            const elRef = useRef(null);
+            const isComposing = useRef(false);
+            const [isDanger, setIsDanger] = useState(false);
+            const [lineHeight, setLineHeight] = useState(1.35);
+
+            // 親から値が降ってきたときに、入力中でなければ同期する
+            useEffect(() => {
+                if (elRef.current && !isComposing.current && elRef.current.textContent !== value) {
+                    elRef.current.textContent = value || "";
+                    adjustAndCheck();
+                }
+            }, [value]);
+
+            const adjustAndCheck = useCallback(() => {
+                const el = elRef.current;
+                if (!el || !onOverflowStateChange) return;
+
+                // いったんリセットして高さを測定
+                el.style.lineHeight = "1.15";
+                const isTrueOverflow = el.scrollHeight > el.clientHeight + 8;
+
+                if (isTrueOverflow) {
+                    setIsDanger(true);
+                    onOverflowStateChange(true);
+                    setLineHeight(1.15);
+                } else {
+                    setIsDanger(false);
+                    onOverflowStateChange(false);
+                    el.style.lineHeight = "1.35";
+                    if (el.scrollHeight > el.clientHeight + 5) {
+                        setLineHeight(1.15);
+                    } else {
+                        setLineHeight(1.35);
+                    }
+                }
+            }, [onOverflowStateChange]);
+
+            const handleInput = (e) => {
+                if (isComposing.current) return; // 日本語入力の途中は親Stateに書き込まない
+                const text = e.currentTarget.textContent;
+                onChange(text);
+                adjustAndCheck();
+            };
+
+            const handleCompositionStart = () => {
+                isComposing.current = true;
+            };
+
+            const handleCompositionEnd = (e) => {
+                isComposing.current = false;
+                // 確定したタイミングで一気に親Stateへ同期
+                onChange(e.currentTarget.textContent);
+                adjustAndCheck();
+            };
+
+            return (
+                <div
+                    ref={elRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={handleInput}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
+                    className={`${isVertical ? 'vertical-text' : ''} no-scroll ${isDanger ? 'overflow-danger' : ''} ${className}`}
+                    style={{ 
+                        lineHeight: onOverflowStateChange ? lineHeight : 'inherit', 
+                        transition: 'line-height 0.2s ease',
+                        outline: 'none',
+                        ...style 
+                    }}
+                    placeholder={placeholder}
+                />
+            );
+        };
+
         // 警告モーダル（はみ出し警告）
         const WarningModal = ({ isOpen, onClose }) => {
             if (!isOpen) return null;
@@ -120,7 +195,7 @@
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center border-4 border-red-500 text-black">
                         <Icon name="alert-triangle" className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                        <h3 className="text-2xl font-black font-sans mb-4">まだはみ出しているよ！</h3>
+                        <h3 className="text-2xl font-black font-sans mb-4 text-black">まだはみ出しているよ！</h3>
                         <p className="text-gray-600 font-bold mb-8 font-sans leading-relaxed text-center text-black">
                             これ以上書くと、文字がきえてしまいます。<br/>少しだけ文字をへらしてね。
                         </p>
@@ -132,14 +207,14 @@
             );
         };
 
-        // --- 追加：やり直し確認モーダル（リセット用） ---
+        // やり直し確認モーダル（リセット用）
         const ResetConfirmModal = ({ isOpen, onConfirm, onClose }) => {
             if (!isOpen) return null;
             return (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center border-4 border-gray-400 text-black">
                         <Icon name="trash" className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                        <h3 className="text-2xl font-black font-sans mb-4">本当に ぜんぶ消す？</h3>
+                        <h3 className="text-2xl font-black font-sans mb-4 text-black">本当に ぜんぶ消す？</h3>
                         <p className="text-gray-600 font-bold mb-8 font-sans leading-relaxed text-center text-black">
                             書いた内容やのせた写真が、<br/>すべて消えてしまいます。いいですか？
                         </p>
@@ -156,6 +231,7 @@
             );
         };
 
+        // 画像切り抜きコンポーネント（タッチ操作対応）
         const ImageCropper = ({ src, onCrop, onClose, targetWidth, targetHeight }) => {
             const [scale, setScale] = useState(1);
             const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -186,8 +262,27 @@
                 ctx.drawImage(imgRef.current, position.x, position.y, imgRef.current.width * scale, imgRef.current.height * scale);
             }, [scale, position, src, targetWidth, targetHeight]);
 
-            const onMD = (e) => { setIsDragging(true); setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y }); };
-            const onMM = (e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); };
+            // マウスドラッグ処理
+            const onMD = (e) => { 
+                setIsDragging(true); 
+                setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y }); 
+            };
+            const onMM = (e) => { 
+                if (isDragging) setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); 
+            };
+
+            // タッチ操作（スマートフォン）対応
+            const onTS = (e) => {
+                if (e.touches.length === 1) {
+                    setIsDragging(true);
+                    setDragStart({ x: e.touches[0].clientX - position.x, y: e.touches[0].clientY - position.y });
+                }
+            };
+            const onTM = (e) => {
+                if (isDragging && e.touches.length === 1) {
+                    setPosition({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+                }
+            };
 
             return (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[400] no-print p-4 backdrop-blur-sm">
@@ -196,7 +291,13 @@
                         <div 
                             className="relative overflow-hidden border-2 border-gray-200 cursor-move bg-gray-100 rounded-lg shadow-inner" 
                             style={{ width: '280px', height: '373px' }}
-                            onMouseDown={onMD} onMouseMove={onMM} onMouseUp={() => setIsDragging(false)} onMouseLeave={() => setIsDragging(false)}
+                            onMouseDown={onMD} 
+                            onMouseMove={onMM} 
+                            onMouseUp={() => setIsDragging(false)} 
+                            onMouseLeave={() => setIsDragging(false)}
+                            onTouchStart={onTS}
+                            onTouchMove={onTM}
+                            onTouchEnd={() => setIsDragging(false)}
                         >
                             <canvas ref={canvasRef} width={targetWidth} height={targetHeight} className="w-full h-full pointer-events-none" />
                         </div>
@@ -210,48 +311,6 @@
                             <button onClick={() => onCrop(canvasRef.current.toDataURL('image/jpeg', 0.8))} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg text-center text-white">これでOK！</button>
                         </div>
                     </div>
-                </div>
-            );
-        };
-
-        const AutoFitText = ({ value, onChange, placeholder, onOverflowStateChange, className = "" }) => {
-            const elRef = useRef(null);
-            const [lineHeight, setLineHeight] = useState(1.35);
-            const [isDanger, setIsDanger] = useState(false);
-
-            const adjustAndCheck = useCallback(() => {
-                const el = elRef.current;
-                if (!el) return;
-                el.style.lineHeight = "1.15";
-                const isTrueOverflow = el.scrollWidth > el.clientWidth + 8; 
-                if (isTrueOverflow) {
-                    setIsDanger(true);
-                    onOverflowStateChange(true);
-                    setLineHeight(1.15);
-                } else {
-                    setIsDanger(false);
-                    onOverflowStateChange(false);
-                    el.style.lineHeight = "1.35";
-                    if (el.scrollWidth > el.clientWidth + 5) {
-                        setLineHeight(1.15);
-                    } else {
-                        setLineHeight(1.35);
-                    }
-                }
-            }, [onOverflowStateChange]);
-
-            useEffect(() => { adjustAndCheck(); }, [value, adjustAndCheck]);
-
-            return (
-                <div 
-                    ref={elRef}
-                    contentEditable suppressContentEditableWarning 
-                    onInput={(e) => { onChange(e.currentTarget.textContent); adjustAndCheck(); }}
-                    className={`vertical-text no-scroll ${isDanger ? 'overflow-danger' : ''} ${className}`}
-                    style={{ lineHeight: lineHeight, transition: 'line-height 0.2s ease' }}
-                    placeholder={placeholder}
-                >
-                    {value}
                 </div>
             );
         };
@@ -283,8 +342,8 @@
                     >
                         {image ? <img src={image} alt="Article" className="w-full h-full object-cover" /> : (
                             <div className="text-gray-400 flex flex-col items-center text-center p-2 group text-black">
-                                <Icon name="camera" className="w-5 h-5 mb-1" />
-                                <span className="no-print font-sans text-[10px] font-bold">写真をのせる</span>
+                                <Icon name="camera" className="w-5 h-5 mb-1 text-gray-500" />
+                                <span className="no-print font-sans text-[10px] font-bold text-gray-500">写真をのせる</span>
                             </div>
                         )}
                     </div>
@@ -306,7 +365,7 @@
             const [saveStatus, setSaveStatus] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [modalOpen, setModalOpen] = useState(false);
-            const [resetModalOpen, setResetModalOpen] = useState(false); // リセット用のモーダル状態
+            const [resetModalOpen, setResetModalOpen] = useState(false); 
             const [globalOverflow, setGlobalOverflow] = useState(false);
             const firebaseServices = useRef(null);
             const modalTimerRef = useRef(null);
@@ -323,13 +382,15 @@
                 const init = async () => {
                     const svcs = initFirebase(); 
                     if (!svcs) {
-                        // スタンドアロン（ローカル保存）用ダミーユーザー設定
                         setUser({ uid: "local-user" });
                         setIsLoading(false);
                         return;
                     }
                     firebaseServices.current = svcs;
-                    try { if (initialToken) await window.firebase.signInWithCustomToken(svcs.auth, initialToken); else await window.firebase.signInAnonymously(svcs.auth); } catch (e) {}
+                    try { 
+                        if (initialToken) await window.firebase.signInWithCustomToken(svcs.auth, initialToken); 
+                        else await window.firebase.signInAnonymously(svcs.auth); 
+                    } catch (e) {}
                     return window.firebase.onAuthStateChanged(svcs.auth, setUser);
                 };
                 init();
@@ -364,7 +425,6 @@
             const save = async () => {
                 if (globalOverflow) { setModalOpen(true); return; }
                 
-                // localStorageフォールバック
                 try {
                     localStorage.setItem('newspaper_local_data', JSON.stringify({ newsTitle, info, articles, reflection }));
                 } catch(e) {}
@@ -383,7 +443,6 @@
                 } catch (e) {} finally { setIsSaving(false); }
             };
 
-            // --- 追加：やり直し（リセット）の実行ロジック ---
             const handleReset = async () => {
                 setResetModalOpen(false);
                 setNewsTitle(DEFAULT_TITLE);
@@ -392,7 +451,6 @@
                 setReflection(DEFAULT_REFLECTION);
                 setGlobalOverflow(false);
 
-                // ローカルとクラウド上のセーブデータも初期状態に強制上書きする
                 try {
                     localStorage.setItem('newspaper_local_data', JSON.stringify({
                         newsTitle: DEFAULT_TITLE,
@@ -423,7 +481,6 @@
                 }
             };
 
-            // ローカル保存データがあればマウント時に読み込む
             useEffect(() => {
                 try {
                     const localData = localStorage.getItem('newspaper_local_data');
@@ -464,108 +521,148 @@
                 <div className="min-h-screen py-8 flex flex-col items-center selection:bg-yellow-200 text-black">
                     <WarningModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
                     
-                    {/* 追加：やり直し（リセット）用の確認モーダル */}
                     <ResetConfirmModal 
                         isOpen={resetModalOpen} 
                         onConfirm={handleReset} 
                         onClose={() => setResetModalOpen(false)} 
                     />
                     
-                    <div className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 no-print z-[100] bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-gray-200 text-black">
-                        <button onClick={save} disabled={isSaving} className={`flex items-center gap-2 font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg active:scale-95 font-sans text-sm ${globalOverflow ? 'bg-red-200 text-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                            {isSaving ? <Icon name="loader-2" className="w-4 h-4 spinner" /> : <Icon name="save" className="w-4 h-4 text-white" />}
-                            かいたところを保存
+                    {/* 操作ヘッダー：ボタンの左右切れを防ぎ、すべての環境で綺麗に表示されるレスポンシブな横並び配置 */}
+                    <div className="fixed top-4 left-1/2 -translate-x-1/2 flex flex-row flex-nowrap items-center justify-start sm:justify-center gap-1.5 md:gap-4 no-print z-[100] bg-white/95 backdrop-blur-md px-3 py-2.5 md:p-4 rounded-2xl shadow-2xl border border-gray-200 text-black w-[92vw] max-w-[550px] md:max-w-[700px] overflow-x-auto scrollbar-none">
+                        <button onClick={save} disabled={isSaving} className={`flex items-center justify-center gap-1 md:gap-2 font-bold py-1.5 md:py-2.5 px-2 md:px-5 rounded-xl transition-all shadow active:scale-95 font-sans text-[11px] md:text-sm shrink-0 ${globalOverflow ? 'bg-red-200 text-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                            {isSaving ? <Icon name="loader-2" className="w-3.5 h-3.5 spinner" /> : <Icon name="save" className="w-3.5 h-3.5 text-white" />}
+                            <span>保存する</span>
                         </button>
-                        <button onClick={() => window.print()} className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg active:scale-95 font-sans text-sm text-white">
-                            <Icon name="file-down" className="w-4 h-4 text-white" />
-                            PDF（いんさつ）にする
+                        <button onClick={() => window.print()} className="flex items-center justify-center gap-1 md:gap-2 bg-gray-900 hover:bg-black text-white font-bold py-1.5 md:py-2.5 px-2 md:px-5 rounded-xl transition-all shadow active:scale-95 font-sans text-[11px] md:text-sm text-white shrink-0">
+                            <Icon name="file-down" className="w-3.5 h-3.5 text-white" />
+                            <span>PDFにする</span>
                         </button>
-                        
-                        {/* 追加：最初からやりなおす（ぜんぶ消す）ボタン */}
-                        <button onClick={() => setResetModalOpen(true)} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl transition-all shadow active:scale-95 font-sans text-sm border border-gray-300">
-                            <Icon name="trash" className="w-4 h-4 text-red-500" />
-                            最初からやりなおす
+                        <button onClick={() => setResetModalOpen(true)} className="flex items-center justify-center gap-1 md:gap-2 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-1.5 md:py-2.5 px-2 md:px-4 rounded-xl transition-all shadow active:scale-95 font-sans text-[11px] md:text-sm border border-gray-300 shrink-0">
+                            <Icon name="trash" className="w-3.5 h-3.5 text-red-500" />
+                            <span>やりなおす</span>
                         </button>
 
-                        {saveStatus === 'success' && <div className="flex items-center gap-1.5 text-green-600 font-bold font-sans text-sm text-black"><Icon name="check-circle" className="w-4 h-4" /> ほぞんできたよ！</div>}
+                        {saveStatus === 'success' && (
+                            <div className="flex items-center gap-1 text-green-600 font-bold font-sans text-[10px] md:text-xs text-black shrink-0 ml-1">
+                                <Icon name="check-circle" className="w-3.5 h-3.5" /> 
+                                <span>OK！</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="a4-paper bg-white shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] relative overflow-hidden mt-16 text-black" style={{ width: '210mm', height: '297mm', padding: '10mm', boxSizing: 'border-box' }}>
-                        <div className="w-full h-full border-[5px] border-black p-3 flex flex-col text-black">
+                        <div className="w-full h-full border-[5px] border-black p-3 flex flex-col justify-between text-black">
                             
-                            <div className="flex flex-row-reverse h-[70%] min-h-0 pb-3 text-black">
+                            {/* 新聞の上部エリア（全体の約75%） */}
+                            <div className="flex flex-row-reverse h-[75%] min-h-0 pb-3 text-black">
+                                
+                                {/* 新聞社説・タイトル・製作者情報（右側） */}
                                 <div className="w-32 flex flex-col items-center p-0 ml-4 h-full shrink-0 bg-white text-black">
-                                    <div ref={containerRef} className="flex-1 w-full border-[6px] border-double border-black bg-white grid place-items-center relative p-0 overflow-hidden text-black text-center text-black">
-                                        <div ref={titleTextRef} className="font-black focus:bg-yellow-50 cursor-text text-black inline-block text-center text-black" contentEditable suppressContentEditableWarning onBlur={e => setNewsTitle(e.target.textContent)} style={{ writingMode: 'vertical-rl', textOrientation: 'upright', fontSize: fontSize, lineHeight: '1.1', whiteSpace: 'nowrap', margin: '0 auto', padding: '0', transformOrigin: 'center' }}>{newsTitle}</div>
+                                    <div ref={containerRef} className="flex-1 w-full border-[6px] border-double border-black bg-white grid place-items-center relative p-0 overflow-hidden text-black text-center">
+                                        <div ref={titleTextRef} className="font-black focus:bg-yellow-50 cursor-text text-black inline-block text-center" style={{ writingMode: 'vertical-rl', textOrientation: 'upright', fontSize: fontSize, lineHeight: '1.1', whiteSpace: 'nowrap', margin: '0 auto', padding: '0', transformOrigin: 'center' }}>
+                                            <SafeEditableText
+                                                value={newsTitle}
+                                                onChange={setNewsTitle}
+                                                isVertical={true}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="w-full h-[25%] bg-gray-200 mt-5 p-3 text-lg border-2 border-black flex flex-row-reverse justify-start items-start shrink-0 font-bold font-sans text-black text-center text-black">
-                                        <div contentEditable suppressContentEditableWarning onBlur={e => setInfo({...info, school: e.target.textContent})} className="vertical-text h-full">{info.school}</div>
-                                        <div contentEditable suppressContentEditableWarning onBlur={(e) => setInfo({...info, class: e.target.textContent})} className="vertical-text h-full ml-1.5">{info.class}</div>
-                                        <div contentEditable suppressContentEditableWarning onBlur={(e) => setInfo({...info, name: e.target.textContent})} className="vertical-text h-full ml-2.5">{info.name}</div>
+                                    <div className="w-full h-[25%] bg-gray-200 mt-5 p-3 text-lg border-2 border-black flex flex-row-reverse justify-start items-start shrink-0 font-bold font-sans text-black text-center">
+                                        <SafeEditableText value={info.school} onChange={val => setInfo({...info, school: val})} isVertical={true} className="h-full" />
+                                        <SafeEditableText value={info.class} onChange={val => setInfo({...info, class: val})} isVertical={true} className="h-full ml-1.5" />
+                                        <SafeEditableText value={info.name} onChange={val => setInfo({...info, name: val})} isVertical={true} className="h-full ml-2.5" />
                                     </div>
                                 </div>
 
+                                {/* メインコンテンツ（左側：1段目 ＆ 2段目） */}
                                 <div className="flex-1 flex flex-col min-w-0 h-full text-black">
-                                    <div className="bg-black text-white w-full h-10 px-4 font-black flex items-center text-xl mb-3 shrink-0 font-sans text-center text-white" contentEditable suppressContentEditableWarning onBlur={e => { const n = [...articles]; n[0].headline = e.target.textContent; setArticles(n); }}>{articles[0].headline}</div>
                                     
-                                    <div className="flex-1 flex flex-row-reverse min-h-0 gap-4 pb-2 text-black">
-                                        <div className="vertical-text text-xl font-black bg-gray-200 px-3 py-1 h-full flex items-center shrink-0 font-sans border-r border-black text-center text-black" contentEditable suppressContentEditableWarning onBlur={(e) => { const n = [...articles]; n[0].sub = e.currentTarget.textContent; setArticles(n); }}>{articles[0].sub}</div>
-                                        <AutoFitText 
-                                            value={articles[0].content} 
-                                            onChange={text => { const n = [...articles]; n[0].content = text; setArticles(n); }}
-                                            onOverflowStateChange={handleOverflowUpdate}
-                                            className="flex-1 text-lg font-medium focus:bg-yellow-50 h-full text-black"
-                                        />
-                                        <div className="shrink-0 flex flex-col justify-start h-full aspect-[3/4] text-black"><ImageBlock image={articles[0].image} onImageChange={url => { const n = [...articles]; n[0].image = url; setArticles(n); }} className="w-full" /></div>
+                                    {/* 1段目：メイン大見出し ＆ 本文 ＆ 写真1 */}
+                                    <div className="flex-1 flex flex-col min-h-0">
+                                        <div className="bg-black text-white w-full h-10 px-4 font-black flex items-center text-xl mb-3 shrink-0 font-sans text-center text-white">
+                                            <SafeEditableText value={articles[0].headline} onChange={text => { const n = [...articles]; n[0].headline = text; setArticles(n); }} isVertical={false} className="w-full h-full flex items-center" />
+                                        </div>
+                                        <div className="flex-1 flex flex-row-reverse min-h-0 gap-4 pb-2 text-black">
+                                            <div className="vertical-text text-xl font-black bg-gray-200 px-3 py-1 h-full flex items-center shrink-0 font-sans border-r border-black text-center text-black">
+                                                <SafeEditableText value={articles[0].sub} onChange={text => { const n = [...articles]; n[0].sub = text; setArticles(n); }} isVertical={true} className="h-full flex items-center" />
+                                            </div>
+                                            <SafeEditableText 
+                                                value={articles[0].content} 
+                                                onChange={text => { const n = [...articles]; n[0].content = text; setArticles(n); }}
+                                                onOverflowStateChange={handleOverflowUpdate}
+                                                isVertical={true}
+                                                className="flex-1 text-lg font-medium focus:bg-yellow-50 h-full text-black leading-relaxed"
+                                            />
+                                            <div className="shrink-0 flex flex-col justify-start h-full aspect-[3/4] text-black">
+                                                <ImageBlock image={articles[0].image} onImageChange={url => { const n = [...articles]; n[0].image = url; setArticles(n); }} className="w-full h-full" />
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <hr className="border-t-[4px] border-black my-2" />
 
+                                    {/* 2段目：中段記事（見出しなし・本文 ＆ 写真2） */}
                                     <div className="flex-1 flex flex-row-reverse min-h-0 pt-2 pb-0 gap-4 border-none items-end text-black">
                                         <div className="shrink-0 flex flex-col justify-end h-full aspect-[3/4] text-black">
                                             <ImageBlock image={articles[1].image} onImageChange={url => { const n = [...articles]; n[1].image = url; setArticles(n); }} className="w-full h-full" />
                                         </div>
-                                        <AutoFitText 
+                                        <SafeEditableText 
                                             value={articles[1].content} 
                                             onChange={text => { const n = [...articles]; n[1].content = text; setArticles(n); }}
                                             onOverflowStateChange={handleOverflowUpdate}
-                                            className="flex-1 text-lg font-medium focus:bg-yellow-50 h-full text-black"
+                                            isVertical={true}
+                                            className="flex-1 text-lg font-medium focus:bg-yellow-50 h-full text-black leading-relaxed"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            <hr className="border-t-[4px] border-black my-2" />
+                            <hr className="border-t-[6px] border-double border-black my-1" />
 
-                            <div className="flex flex-row-reverse flex-1 min-h-0 pt-3 gap-4 text-black">
-                                <div className="flex-1 flex flex-col min-w-0 text-black">
-                                    <div className="bg-black text-white w-full h-10 px-4 font-black flex items-center text-xl mb-3 shrink-0 font-sans text-center text-white" contentEditable suppressContentEditableWarning onBlur={(e) => { const n = [...articles]; n[2].headline = e.currentTarget.textContent; setArticles(n); }}>{articles[2].headline}</div>
-                                    <div className="flex flex-row-reverse flex-1 min-h-0 gap-4 text-black">
-                                        <AutoFitText 
+                            {/* 新聞の下部エリア（全体の約25%：3段目（下段見出し＋記事＋写真） ＆ まとめふりかえり） */}
+                            <div className="h-[23%] flex flex-row-reverse min-h-0 gap-4 pt-2 text-black">
+                                
+                                {/* 3段目：下段見出し＋記事（右側） */}
+                                <div className="flex-1 flex flex-col min-h-0 text-black">
+                                    <div className="bg-black text-white w-full h-8 px-3 font-black flex items-center text-md mb-2 shrink-0 font-sans text-center text-white">
+                                        <SafeEditableText value={articles[2].headline} onChange={text => { const n = [...articles]; n[2].headline = text; setArticles(n); }} isVertical={false} className="w-full h-full flex items-center" />
+                                    </div>
+                                    <div className="flex-1 flex flex-row-reverse min-h-0 gap-3">
+                                        <SafeEditableText 
                                             value={articles[2].content} 
                                             onChange={text => { const n = [...articles]; n[2].content = text; setArticles(n); }}
                                             onOverflowStateChange={handleOverflowUpdate}
-                                            className="flex-1 text-lg font-medium focus:bg-yellow-50 h-full text-black"
+                                            isVertical={true}
+                                            className="flex-1 text-[13px] font-medium focus:bg-yellow-50 h-full text-black leading-normal"
                                         />
-                                        <div className="shrink-0 flex flex-col justify-start h-full aspect-[3/4] text-black"><ImageBlock image={articles[2].image} onImageChange={(url) => { const n = [...articles]; n[2].image = url; setArticles(n); }} className="w-full" /></div>
+                                        <div className="shrink-0 flex flex-col justify-start h-full aspect-[3/4] text-black">
+                                            <ImageBlock image={articles[2].image} onImageChange={url => { const n = [...articles]; n[2].image = url; setArticles(n); }} className="w-full h-full" />
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="w-[24%] shrink-0 flex flex-col h-full border-[3px] border-black bg-gray-50 p-1 font-serif text-black">
-                                    <AutoFitText 
+
+                                <div className="w-[1px] bg-gray-400 h-full shrink-0"></div>
+
+                                {/* まとめ・ふりかえり（左側）：縦書き(isVertical={true})、太字解除(font-medium)へ変更 */}
+                                <div className="w-[38%] h-full flex flex-col p-2.5 bg-gray-50 border-2 border-black rounded shrink-0 text-black">
+                                    <SafeEditableText 
                                         value={reflection} 
                                         onChange={setReflection}
-                                        onOverflowStateChange={handleOverflowUpdate}
-                                        className="flex-1 text-lg focus:bg-white h-full text-black"
-                                        placeholder="感想などを書いてね"
+                                        isVertical={true}
+                                        className="w-full h-full text-sm font-medium leading-relaxed focus:bg-yellow-50 font-serif"
+                                        placeholder="【まとめ・ふりかえり】"
                                     />
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
             );
         }
-        const root = ReactDOM.createRoot(document.getElementById('root'));
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
         root.render(<App />);
     </script>
 </body>
